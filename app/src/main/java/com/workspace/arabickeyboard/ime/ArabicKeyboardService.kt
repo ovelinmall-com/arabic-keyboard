@@ -179,10 +179,11 @@ class ArabicKeyboardService : InputMethodService() {
         clipboardExpanded = false
         currentWordBuffer.setLength(0)
         internalSelectionUpdatePending = false
+        defaultImeHeightPx = computeDefaultImeHeightPx()
+        window.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, defaultImeHeightPx!!)
         registerClipboardListener()
         render()
         root.post {
-            if (root.height > 0) defaultImeHeightPx = root.height
             resizeClipboardWindow(false)
             root.postDelayed({ captureCurrentClipboard() }, 50)
         }
@@ -445,10 +446,10 @@ class ArabicKeyboardService : InputMethodService() {
                 root.post { resizeClipboardWindow(false) }
             }
             recentExpanded = false
-            captureCurrentClipboard()
             panel = Panel.CLIPBOARD
             render()
             root.post { resizeClipboardWindow(false) }
+            refreshClipboardAfterOpen()
         }.apply {
             setOnLongClickListener {
                 val next = !prefs.getBoolean("toolbar_clipboard_settings_swapped", false)
@@ -480,11 +481,18 @@ class ArabicKeyboardService : InputMethodService() {
         if (latest != null) {
             commit(latest.text, learn = false)
         } else {
-            captureCurrentClipboard()
             recentExpanded = false
             panel = Panel.CLIPBOARD
             render()
+            root.post { resizeClipboardWindow(false) }
+            refreshClipboardAfterOpen()
         }
+    }
+
+    private fun refreshClipboardAfterOpen() {
+        root.postDelayed({
+            if (panel == Panel.CLIPBOARD && captureCurrentClipboard()) render()
+        }, 50)
     }
 
     private fun pasteClip(text: String) {
@@ -821,11 +829,20 @@ class ArabicKeyboardService : InputMethodService() {
             if (recentExpanded) recent else recent.take(3),
             compact = !clipboardExpanded,
         )
-        content.addView(sectionTitle("المثبتة  ·  ${pinned.size}"))
-        addClipGrid(content, pinned)
-        if (recent.isEmpty() && pinned.isEmpty()) {
-            content.addView(action("انسخ نصًا ثم افتح الحافظة") {}, LinearLayout.LayoutParams(-1, dp(50)))
+        if (recent.isEmpty()) {
+            content.addView(TextView(this).apply {
+                text = "العناصر المنسوخة الجديدة تظهر هنا"
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setTextColor(Color.rgb(145, 145, 145))
+                background = rounded(Color.TRANSPARENT, dp(10), Color.rgb(58, 58, 58))
+            }, LinearLayout.LayoutParams(-1, dp(54)).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(4)
+            })
         }
+        content.addView(sectionTitle("المثبتة"))
+        addClipGrid(content, pinned)
         var selectionActionsView: View? = null
         if (selectedClipIds.isNotEmpty()) {
             val selectedItems = clips.filter { it.id in selectedClipIds }
@@ -861,11 +878,13 @@ class ArabicKeyboardService : InputMethodService() {
             selectionActions.setPadding(dp(8), 0, dp(8), 0)
             selectionActionsView = selectionActions
         }
-        content.addView(action("مسح العناصر غير المثبتة") {
-            saveClips(clips.filter { it.pinned })
-            selectedClipIds.retainAll(clips.filter { it.pinned }.map { it.id }.toSet())
-            render()
-        }, LinearLayout.LayoutParams(-1, dp(38)))
+        if (recent.isNotEmpty()) {
+            content.addView(action("مسح العناصر غير المثبتة") {
+                saveClips(clips.filter { it.pinned })
+                selectedClipIds.retainAll(clips.filter { it.pinned }.map { it.id }.toSet())
+                render()
+            }, LinearLayout.LayoutParams(-1, dp(38)))
+        }
         scroller.addView(content)
         root.addView(scroller, LinearLayout.LayoutParams(-1, 0, 1f))
         selectionActionsView?.let {
@@ -977,7 +996,7 @@ class ArabicKeyboardService : InputMethodService() {
                 card.addView(actions, LinearLayout.LayoutParams(-1, dp(actionsHeight)))
                 val textView = TextView(this).apply {
                     text = clipCardPreview(item.text)
-                    textSize = 14f
+                    textSize = 16f
                     maxLines = if (clipboardExpanded) Int.MAX_VALUE else if (compact) 3 else 4
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     gravity = Gravity.TOP or Gravity.END
@@ -1275,7 +1294,7 @@ class ArabicKeyboardService : InputMethodService() {
             layoutDirection = View.LAYOUT_DIRECTION_RTL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val recentLabel = sectionTitle("المنسوخة مؤخرًا  ·  $count").apply {
+        val recentLabel = sectionTitle("المنسوخة مؤخرًا").apply {
             setOnTouchListener { _, event -> handleClipboardTitleTouch(event) }
         }
         heading.addView(recentLabel, LinearLayout.LayoutParams(0, -1, 1f))
@@ -1299,11 +1318,15 @@ class ArabicKeyboardService : InputMethodService() {
 
     private fun key(label: String, onClick: () -> Unit): TextView {
         val view = action(label, onClick, keyboardKeyBackground).apply {
-            textSize = 21f
-            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            textSize = if (arabic) 23f else 21f
+            typeface = Typeface.create(
+                "sans-serif",
+                if (arabic) Typeface.BOLD else Typeface.NORMAL,
+            )
+            textDirection = if (arabic) View.TEXT_DIRECTION_RTL else View.TEXT_DIRECTION_LTR
             isSingleLine = true
             maxLines = 1
-            includeFontPadding = false
+            includeFontPadding = true
             textLocale = java.util.Locale.forLanguageTag(if (arabic) "ar" else "en")
             background = android.graphics.drawable.InsetDrawable(
                 rounded(keyboardKeyBackground, dp(8), Color.rgb(104, 104, 104)),
@@ -1466,7 +1489,7 @@ class ArabicKeyboardService : InputMethodService() {
     private fun keyParams() = LinearLayout.LayoutParams(0, dp(keyHeightDp()), 1f).apply {
         marginStart = 0
         marginEnd = 0
-        bottomMargin = dp(5)
+        bottomMargin = dp(4)
     }
 
     private fun toolbarKeyParams() = LinearLayout.LayoutParams(0, dp(34), 1f).apply {
@@ -1475,10 +1498,21 @@ class ArabicKeyboardService : InputMethodService() {
     }
 
     private fun rowParams(bottom: Int = 0) =
-        LinearLayout.LayoutParams(-1, dp(keyHeightDp() + 3)).apply { bottomMargin = dp(bottom) }
+        LinearLayout.LayoutParams(-1, dp(keyHeightDp() + 5)).apply { bottomMargin = dp(bottom) }
 
-    private fun keyHeightDp(): Int =
-        if (resources.configuration.screenHeightDp < 680) 44 else 50
+    private fun keyHeightDp(): Int {
+        val targetHeightDp =
+            (defaultImeHeightPx ?: computeDefaultImeHeightPx()).toFloat() / resources.displayMetrics.density
+        val suggestionHeightDp = if (sensitiveFieldMode || numericFieldMode) 0 else 29
+        val rowCount = 2 + keyRows.size
+        val fixedHeightDp = 42 + suggestionHeightDp + 4
+        return ((targetHeightDp - fixedHeightDp) / rowCount - 5)
+            .toInt()
+            .coerceIn(32, 50)
+    }
+
+    private fun computeDefaultImeHeightPx(): Int =
+        (resources.displayMetrics.heightPixels * 0.38f).toInt().coerceAtLeast(dp(230))
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }
