@@ -180,11 +180,11 @@ class ArabicKeyboardService : InputMethodService() {
         currentWordBuffer.setLength(0)
         internalSelectionUpdatePending = false
         registerClipboardListener()
-        captureCurrentClipboard()
         render()
         root.post {
             if (root.height > 0) defaultImeHeightPx = root.height
             resizeClipboardWindow(false)
+            root.postDelayed({ captureCurrentClipboard() }, 50)
         }
     }
 
