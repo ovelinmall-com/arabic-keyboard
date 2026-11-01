@@ -188,9 +188,9 @@ class ArabicKeyboardService : InputMethodService() {
         }
     }
 
-    override fun onFinishInputView(view: View, finishingInput: Boolean) {
+    override fun onFinishInputView(finishingInput: Boolean) {
         unregisterClipboardListener()
-        super.onFinishInputView(view, finishingInput)
+        super.onFinishInputView(finishingInput)
     }
 
     override fun onUpdateSelection(
@@ -1389,6 +1389,12 @@ class ArabicKeyboardService : InputMethodService() {
             setOnClickListener { onClick() }
             isClickable = true
         }
+
+    private fun action(
+        label: String,
+        backgroundColor: Int = keyboardKeyBackground,
+        onClick: () -> Unit,
+    ): TextView = action(label, onClick, backgroundColor)
 
     private fun pressCharacter(key: String) {
         if (key == "⇧") {
