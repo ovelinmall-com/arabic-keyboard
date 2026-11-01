@@ -161,6 +161,7 @@ class ArabicKeyboardService : InputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         panel = Panel.KEYS
+        val restoreCollapsedWindow = clipboardExpanded
         val inputClass = info?.inputType?.and(InputType.TYPE_MASK_CLASS)
         numericFieldMode =
             inputClass == InputType.TYPE_CLASS_NUMBER || inputClass == InputType.TYPE_CLASS_PHONE
@@ -179,12 +180,15 @@ class ArabicKeyboardService : InputMethodService() {
         clipboardExpanded = false
         currentWordBuffer.setLength(0)
         internalSelectionUpdatePending = false
-        defaultImeHeightPx = computeDefaultImeHeightPx()
-        window.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, defaultImeHeightPx!!)
+        if (defaultImeHeightPx == null && root.height > 0) defaultImeHeightPx = root.height
         registerClipboardListener()
         render()
         root.post {
-            resizeClipboardWindow(false)
+            if (defaultImeHeightPx == null && root.height > 0) {
+                defaultImeHeightPx = root.height
+                render()
+            }
+            if (restoreCollapsedWindow) resizeClipboardWindow(false)
             root.postDelayed({ captureCurrentClipboard() }, 50)
         }
     }
